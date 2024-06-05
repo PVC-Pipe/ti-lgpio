@@ -60,6 +60,33 @@ _BOARD_MAP = {
 }
 _BCM_MAP = {channel: gpio for (gpio, channel) in _BOARD_MAP.items()}
 
+# Unlike the RaspberryPi boards, the GPIOs are not all from one gpiochip,
+# so each BCM gpio is mapped to a tuple of the TI gpiochip and line number
+# mcu_gpio0 = gpiochip0
+# main_gpio1 = gpiochip1
+# main_gpio1 = gpiochip2
+_TI_MAP = {
+    2:  (0, 18),
+    3:  (0, 17),
+    4:  (1, 38), 14:  (2, 14),
+                 15: (2, 13),
+    17: (2, 8),  18: (2, 11),
+    27: (1, 33),
+    22: (1, 41), 23: (0, 7),
+                 24: (0, 10),
+    10: (0, 3),
+    9: (0, 4),   25: (1, 42),
+    11: (0, 2),  8:  (0, 0),
+                 7:  (0, 9),
+    0:  (0, 20), 1:  (0, 19),
+    5:  (2, 15),
+    6:  (2, 17), 12: (2, 16),
+    13: (2, 18),
+    19: (2, 12), 16: (2, 7),
+    25: (1, 36), 20: (2, 10),
+                 21: (2, 9),
+}
+
 # LG mode constants
 _LG_INPUT = 0x100
 _LG_OUTPUT = 0x200
@@ -163,10 +190,11 @@ class PWM:
 
     def __init__(self, channel, frequency):
         self._gpio = _to_gpio(channel)
+        ti_gpio = _to_gpio(self._gpio)
         if self._gpio in _pwms:
             raise RuntimeError(
                 'A PWM object already exists for this GPIO channel')
-        _check_output(lgpio.gpio_get_mode(_chip, self._gpio))
+        _check_output(lgpio.gpio_get_mode(ti_gpio[0], ti_gpio[1]))
         _pwms[self._gpio] = self
         self._frequency = None
         self._dc = None
@@ -368,6 +396,12 @@ def _to_gpio(channel):
     else:
         assert False, 'Invalid channel mode'
 
+def _to_ti_gpio(gpio):
+    """
+    Converts *gpio* to a (gpiochip, line) tuple. Should be run after
+    :func:`_to_gpio`.
+    """
+    return _TI_MAP[gpio]
 
 def _from_gpio(gpio):
     """
@@ -485,35 +519,26 @@ def _get_rpi_info():
     }
 
 
-def _get_gpiochip_num():
+def _open_all_gpiochips():
     """
-    Determines the number of the GPIO chip device to access.
+    Opens all all gpiochips with a userspace GPIO driver.
 
-    If :envvar:`RPI_LGPIO_CHIP` is found in the environment, it will be used.
-    Otherwise, the routine will attempt to query sysfs to find a GPIO chip
-    device with a driver known to be used for userspace GPIO access. If none
-    can be found, returns 0 as a fallback.
+    Used to replace the _chip global variable and _get_gpiochip_num()
+    function due to there being multiple gpiochips used. Returns 0.
     """
-    try:
-        return int(os.environ['RPI_LGPIO_CHIP'])
-    except KeyError:
-        # The following are the driver names used for the GPIO chip devices
-        # intended for userspace control
-        user_gpio_drivers = frozenset((
-            'raspberrypi,rp1-gpio',
-            'raspberrypi,bcm2835-gpio',
-            'raspberrypi,bcm2711-gpio',
+    user_gpio_drivers = frozenset((
+            'ti,am64-gpio',
+            'ti,keystone-gpio',
         ))
-        for dev in Path('/sys/bus/gpio/devices').glob('gpiochip*'):
-            compatible = (dev / 'of_node/compatible')
-            try:
-                drivers = set(compatible.read_text().split('\0'))
-            except FileNotFoundError:
-                continue
-            if drivers & user_gpio_drivers:
-                return int(dev.name[len('gpiochip'):])
+    for dev in Path('/sys/bus/gpio/devices').glob('gpiochip*'):
+        compatible = (dev / 'of_node/compatible')
+        try:
+            drivers = set(compatible.read_text().split('\0'))
+        except FileNotFoundError:
+            continue
+        if drivers & user_gpio_drivers:
+            lgpio.gpiochip_open(int(dev.name[len('gpiochip'):]))
     return 0
-
 
 def getmode():
     """
@@ -548,8 +573,7 @@ def setmode(new_mode):
     if new_mode not in (BOARD, BCM):
         raise ValueError('An invalid mode was passed to setmode()')
 
-    if _chip is None:
-        _chip = _check(lgpio.gpiochip_open(_get_gpiochip_num()))
+    _check(_open_all_gpiochips())
     _mode = new_mode
 
 
@@ -578,7 +602,8 @@ def gpio_function(channel):
         The board pin number or BCM number depending on :func:`setmode`
     """
     gpio = _to_gpio(channel)
-    mode = _check(lgpio.gpio_get_mode(_chip, gpio))
+    ti_gpio = _to_ti_gpio(gpio)
+    mode = _check(lgpio.gpio_get_mode(ti_gpio[0], ti_gpio[1]))
     if mode & 0x2:
         return OUT
     else:
@@ -719,9 +744,10 @@ def input(channel):
         The board pin number or BCM number depending on :func:`setmode`
     """
     gpio = _to_gpio(channel)
+    ti_gpio = _to_ti_gpio(gpio)
     if not _in_use(gpio):
         raise RuntimeError('You must setup() the GPIO channel first')
-    return _check(lgpio.gpio_read(_chip, gpio))
+    return _check(lgpio.gpio_read(ti_gpio[0], ti_gpio[1]))
 
 
 def output(channel, value):
@@ -789,7 +815,8 @@ def wait_for_edge(channel, edge, bouncetime=None, timeout=None):
         Maximum time (in ms) to wait for the edge
     """
     gpio = _to_gpio(channel)
-    mode = _check(lgpio.gpio_get_mode(_chip, gpio))
+    ti_gpio = _to_ti_gpio(gpio)
+    mode = _check(lgpio.gpio_get_mode(ti_gpio[0], ti_gpio[1]))
     _check_input(mode)
     _check_edge(edge)
     bouncetime = _check_bounce(bouncetime)
@@ -854,7 +881,8 @@ def add_event_detect(channel, edge, callback=None, bouncetime=None):
     if callback is not None and not callable(callback):
         raise TypeError('Parameter must be callable')
     gpio = _to_gpio(channel)
-    mode = _check(lgpio.gpio_get_mode(_chip, gpio))
+    ti_gpio = _to_ti_gpio(gpio)
+    mode = _check(lgpio.gpio_get_mode(ti_gpio[0], ti_gpio[1]))
     _check_input(mode)
     _check_edge(edge)
     bouncetime = _check_bounce(bouncetime)
@@ -883,7 +911,8 @@ def add_event_callback(channel, callback):
     if not callable(callback):
         raise TypeError('Parameter must be callable')
     gpio = _to_gpio(channel)
-    mode = _check(lgpio.gpio_get_mode(_chip, gpio))
+    ti_gpio = _to_ti_gpio(gpio)
+    mode = _check(lgpio.gpio_get_mode(ti_gpio[0], ti_gpio[1]))
     _check_input(mode)
     try:
         alert = _alerts[gpio]
