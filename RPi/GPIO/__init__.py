@@ -99,7 +99,7 @@ _LG_PULL_NONE = 0x80
 _LG_PULLS = (_LG_PULL_UP | _LG_PULL_DOWN | _LG_PULL_NONE)
 
 _mode = UNKNOWN
-_chip = None
+_chip = {}
 _warnings = True
 
 
@@ -537,7 +537,8 @@ def _open_all_gpiochips():
         except FileNotFoundError:
             continue
         if drivers & user_gpio_drivers:
-            lgpio.gpiochip_open(int(dev.name[len('gpiochip'):]))
+            gpiochip_num = int(dev.name[len('gpiochip'):])
+            _chip[gpiochip_num] = lgpio.gpiochip_open(gpiochip_num)
     return 0
 
 def getmode():
