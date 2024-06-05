@@ -785,9 +785,10 @@ def output(channel, value):
         else:
             raise RuntimeError('Number of channels != number of values')
     for gpio, value in zip(gpios, values):
-        mode = lgpio.gpio_get_mode(_chip, gpio)
+        ti_gpio = _to_ti_gpio(gpio)
+        mode = lgpio.gpio_get_mode(_chip[ti_gpio[0]], ti_gpio[1])
         _check_output(mode, 'The GPIO channel has not been set up as an OUTPUT')
-        _check(lgpio.gpio_write(_chip, gpio, value))
+        _check(lgpio.gpio_write(_chip[ti_gpio[0]], ti_gpio[1], value))
 
 
 def wait_for_edge(channel, edge, bouncetime=None, timeout=None):
