@@ -194,7 +194,7 @@ class PWM:
         if self._gpio in _pwms:
             raise RuntimeError(
                 'A PWM object already exists for this GPIO channel')
-        _check_output(lgpio.gpio_get_mode(_chip[_chip[ti_gpio[0]]], ti_gpio[1]))
+        _check_output(lgpio.gpio_get_mode(_chip[ti_gpio[0]], ti_gpio[1]))
         _pwms[self._gpio] = self
         self._frequency = None
         self._dc = None
@@ -717,10 +717,10 @@ def setup(chanlist, direction, pull_up_down=PUD_OFF, initial=None):
             # This gpio_free may seem redundant, but is required when changing
             # the line-flags of an already acquired input line
             try:
-                lgpio.gpio_free(_chip[_chip[ti_gpio[0]]], ti_gpio[1])
+                lgpio.gpio_free(_chip[ti_gpio[0]], ti_gpio[1])
             except lgpio.error:
                 pass
-            _check(lgpio.gpio_claim_input(_chip[_chip[ti_gpio[0]]], ti_gpio[1], {
+            _check(lgpio.gpio_claim_input(_chip[ti_gpio[0]], ti_gpio[1], {
                 PUD_OFF:  lgpio.SET_PULL_NONE,
                 PUD_DOWN: lgpio.SET_PULL_DOWN,
                 PUD_UP:   lgpio.SET_PULL_UP,
@@ -728,9 +728,9 @@ def setup(chanlist, direction, pull_up_down=PUD_OFF, initial=None):
         elif direction == OUT:
             _unset_alert(gpio)
             if initial is None:
-                initial = _check(lgpio.gpio_read(_chip[_chip[ti_gpio[0]]], ti_gpio[1]))
+                initial = _check(lgpio.gpio_read(_chip[ti_gpio[0]], ti_gpio[1]))
             _check(lgpio.gpio_claim_output(
-                _chip[_chip[ti_gpio[0]]], ti_gpio[1], initial, lgpio.SET_PULL_NONE))
+                _chip[ti_gpio[0]], ti_gpio[1], initial, lgpio.SET_PULL_NONE))
         else:
             assert False, 'Invalid direction'
 
@@ -749,7 +749,7 @@ def input(channel):
     ti_gpio = _to_ti_gpio(gpio)
     if not _in_use(gpio):
         raise RuntimeError('You must setup() the GPIO channel first')
-    return _check(lgpio.gpio_read(_chip[_chip[ti_gpio[0]]], ti_gpio[1]))
+    return _check(lgpio.gpio_read(_chip[ti_gpio[0]], ti_gpio[1]))
 
 
 def output(channel, value):
@@ -818,7 +818,7 @@ def wait_for_edge(channel, edge, bouncetime=None, timeout=None):
     """
     gpio = _to_gpio(channel)
     ti_gpio = _to_ti_gpio(gpio)
-    mode = _check(lgpio.gpio_get_mode(_chip[_chip[ti_gpio[0]]], ti_gpio[1]))
+    mode = _check(lgpio.gpio_get_mode(_chip[ti_gpio[0]], ti_gpio[1]))
     _check_input(mode)
     _check_edge(edge)
     bouncetime = _check_bounce(bouncetime)
@@ -884,7 +884,7 @@ def add_event_detect(channel, edge, callback=None, bouncetime=None):
         raise TypeError('Parameter must be callable')
     gpio = _to_gpio(channel)
     ti_gpio = _to_ti_gpio(gpio)
-    mode = _check(lgpio.gpio_get_mode(_chip[_chip[ti_gpio[0]]], ti_gpio[1]))
+    mode = _check(lgpio.gpio_get_mode(_chip[ti_gpio[0]], ti_gpio[1]))
     _check_input(mode)
     _check_edge(edge)
     bouncetime = _check_bounce(bouncetime)
@@ -914,7 +914,7 @@ def add_event_callback(channel, callback):
         raise TypeError('Parameter must be callable')
     gpio = _to_gpio(channel)
     ti_gpio = _to_ti_gpio(gpio)
-    mode = _check(lgpio.gpio_get_mode(_chip[_chip[ti_gpio[0]]], ti_gpio[1]))
+    mode = _check(lgpio.gpio_get_mode(_chip[ti_gpio[0]], ti_gpio[1]))
     _check_input(mode)
     try:
         alert = _alerts[gpio]
