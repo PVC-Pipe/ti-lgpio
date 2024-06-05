@@ -708,6 +708,7 @@ def setup(chanlist, direction, pull_up_down=PUD_OFF, initial=None):
         # shortly anyway. We do deal with the pull-up warning, but only for
         # GPIO2 and GPIO3 because we're not supporting the original RPi so we
         # don't need to worry about the GPIO0 and GPIO1 discrepancy
+        ti_gpio = _to_ti_gpio(gpio)
         if _warnings and gpio in (2, 3) and pull_up_down in (PUD_UP, PUD_DOWN):
             warnings.warn(Warning(
                 'A physical pull up resistor is fitted on this channel!'))
@@ -715,10 +716,10 @@ def setup(chanlist, direction, pull_up_down=PUD_OFF, initial=None):
             # This gpio_free may seem redundant, but is required when changing
             # the line-flags of an already acquired input line
             try:
-                lgpio.gpio_free(_chip, gpio)
+                lgpio.gpio_free(ti_gpio[0], ti_gpio[1])
             except lgpio.error:
                 pass
-            _check(lgpio.gpio_claim_input(_chip, gpio, {
+            _check(lgpio.gpio_claim_input(ti_gpio[0], ti_gpio[1], {
                 PUD_OFF:  lgpio.SET_PULL_NONE,
                 PUD_DOWN: lgpio.SET_PULL_DOWN,
                 PUD_UP:   lgpio.SET_PULL_UP,
@@ -726,9 +727,9 @@ def setup(chanlist, direction, pull_up_down=PUD_OFF, initial=None):
         elif direction == OUT:
             _unset_alert(gpio)
             if initial is None:
-                initial = _check(lgpio.gpio_read(_chip, gpio))
+                initial = _check(lgpio.gpio_read(ti_gpio[0], ti_gpio[1]))
             _check(lgpio.gpio_claim_output(
-                _chip, gpio, initial, lgpio.SET_PULL_NONE))
+                ti_gpio[0], ti_gpio[1], initial, lgpio.SET_PULL_NONE))
         else:
             assert False, 'Invalid direction'
 
